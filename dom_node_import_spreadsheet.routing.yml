@@ -1,0 +1,24 @@
+dom_node_import_spreadsheet.import_form:
+  path: '/admin/content/dom_node_import_spreadsheet'
+  defaults:
+    _title: 'import from spreadsheet'
+    _form: 'Drupal\dom_node_import_spreadsheet\Form\ImportForm'
+  requirements:
+    _permission: 'administer nodes'
+
+dom_node_import_spreadsheet.translate_form:
+  path: '/node/{node}/dom_node_import_spreadsheet'
+  defaults:
+    _title: 'DOM spreadsheet translate'
+    _form: 'Drupal\dom_node_import_spreadsheet\Form\TranslateForm'
+  requirements:
+    _permission: 'DOM spreadsheet translate'
+
+dom_node_import_spreadsheet.translate_form_download_xls:
+  path: '/node/{node}/dom_node_import_spreadsheet/download_xls'
+  defaults:
+    _title: 'Download XLS'
+    _controller: 'Drupal\dom_node_import_spreadsheet\Controller\DownloadXls::build'
+  requirements:
+    _permission: 'DOM spreadsheet translate'
+    _csrf_token: 'TRUE'

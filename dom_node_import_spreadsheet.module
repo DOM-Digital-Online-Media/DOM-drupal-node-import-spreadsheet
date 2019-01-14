@@ -1,0 +1,23 @@
+<?php
+
+/**
+ * @file
+ * Primary module hooks for DOM node import spreadsheet module.
+ *
+ * @DCG
+ * This file is no longer required in Drupal 8.
+ * @see https://www.drupal.org/node/2217931
+ */
+
+/**
+ * Implements hook_dom_node_import_spreadsheet_write_spreadsheet_alter().
+ */
+function dom_node_import_spreadsheet_dom_node_import_spreadsheet_write_spreadsheet_alter(&$result, $context) {
+  foreach ($result as $index => $value) {
+    $entity_path = explode('][', $index);
+    $key = substr($index, strlen($entity_path[0]) + 2);
+    if (strpos($key, '[entity]') !== FALSE) {
+      unset($result[$index]);
+    }
+  }
+}

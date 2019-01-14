@@ -1,0 +1,7 @@
+name: DOM node import from spreadsheet
+type: module
+description: DOM node import from spreadsheet
+package: DOM
+core: 8.x
+dependencies:
+  - tmgmt_content

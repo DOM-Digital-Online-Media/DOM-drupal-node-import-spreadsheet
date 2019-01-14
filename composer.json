@@ -1,0 +1,10 @@
+{
+  "name": "drupal/dom_node_import_spreadsheet",
+  "description": "DOM node import from spreadsheet",
+  "type": "drupal-module",
+  "keywords": ["Drupal", "Translation"],
+  "license": "GPL-2.0+",
+  "require": {
+    "phpoffice/phpspreadsheet": "^1"
+  }
+}

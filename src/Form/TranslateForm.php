@@ -243,6 +243,14 @@ class TranslateForm extends FormBase {
     }
     catch (\Exception $e) {
       $this->messenger()->addError($this->t('Error, node not translated.'));
+      $context = [
+        'translated_data' => &$translated_data,
+        'entity_key' => $entity_key,
+        'langcode' => $langcode,
+        'entity' => $entity->toArray(),
+        'translated_entity' => $translated_entity->toArray(),
+      ];
+      $this->logger('dom_node_import_spreadsheet')->debug(serialize($context));
     }
   }
 

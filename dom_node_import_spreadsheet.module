@@ -16,7 +16,7 @@ function dom_node_import_spreadsheet_dom_node_import_spreadsheet_write_spreadshe
   foreach ($result as $index => $value) {
     $entity_path = explode('][', $index);
     $key = substr($index, strlen($entity_path[0]) + 2);
-    if (strpos($key, '[entity]') !== FALSE) {
+    if (strpos($key, '[entity]') !== FALSE || (isset($value['#text']) && is_numeric($value['#text']))) {
       unset($result[$index]);
     }
   }

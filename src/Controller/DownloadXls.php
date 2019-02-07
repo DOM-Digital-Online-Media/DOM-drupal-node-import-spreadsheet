@@ -9,6 +9,7 @@ use Drupal\Core\Entity\EntityManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\Language\LanguageInterface;
 use Drupal\Core\Render\Element;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\node\Entity\Node;
@@ -91,46 +92,66 @@ class DownloadXls extends ControllerBase {
     // get languages
     $languages = $this->languageManager()->getLanguages();
     $default_language = $this->languageManager()->getDefaultLanguage();
-    unset($languages[$default_language->getId()]);
     // get plugin
     /** @var \Drupal\tmgmt_content\Plugin\tmgmt\Source\ContentEntitySource $plugin */
     $plugin = $this->sourceManager->createInstance('content');
-    $translatable['node:' . $node->id()] = $plugin->extractTranslatableData($node);
-    $reference_fields = DownloadXls::getReferenceFields($node);
-    foreach ($reference_fields as $field_name => $field_definition) {
-      $field = $node->get($field_name);
-      if (isset($translatable['node:' . $node->id()][$field_name]) && $field_definition instanceof FieldConfig) {
-        foreach (Element::children($translatable['node:' . $node->id()][$field_name]) as $delta) {
-          $field_item = $translatable['node:' . $node->id()][$field_name][$delta];
-          foreach (Element::children($field_item) as $property) {
-            if ($target_entity = $this->findReferencedEntity($field, $field_item, $delta, $property)) {
-              $entity_type = $target_entity->getEntityTypeId();
-              $translatable[$entity_type . ':' . $target_entity->id()] = $plugin->extractTranslatableData($target_entity);
+    $result = [];
+    foreach ($languages as $language) {
+      // get translated (or original untranslated) entity
+      if ($node->hasTranslation($language->getId())) {
+        $translated_node = $node->getTranslation($language->getId());
+      }
+      else {
+        $translated_node = $node->getTranslation(LanguageInterface::LANGCODE_DEFAULT);
+      }
+      $translatable['node:' . $translated_node->id()][$language->getId()] = $plugin->extractTranslatableData($translated_node);
+      $reference_fields = DownloadXls::getReferenceFields($node);
+      foreach ($reference_fields as $field_name => $field_definition) {
+        $field = $node->get($field_name);
+        if (isset($translatable['node:' . $node->id()][$language->getId()][$field_name]) && $field_definition instanceof FieldConfig) {
+          foreach (Element::children($translatable['node:' . $node->id()][$language->getId()][$field_name]) as $delta) {
+            $field_item = $translatable['node:' . $node->id()][$language->getId()][$field_name][$delta];
+            foreach (Element::children($field_item) as $property) {
+              if ($target_entity = $this->findReferencedEntity($field, $field_item, $delta, $property)) {
+                // get translated (or original untranslated) entity
+                if ($target_entity->hasTranslation($language->getId())) {
+                  $translated_target_entity = $target_entity->getTranslation($language->getId());
+                }
+                else {
+                  $translated_target_entity = $target_entity->getTranslation(LanguageInterface::LANGCODE_DEFAULT);
+                }
+                $entity_type = $target_entity->getEntityTypeId();
+                $translatable[$entity_type . ':' . $target_entity->id()][$language->getId()] = $plugin->extractTranslatableData($translated_target_entity);
+              }
             }
           }
         }
       }
-    }
-    $result = [];
-    foreach ($this->tmgmt_data->flatten($translatable) as $index => $item) {
-      if (isset($item['#translate']) && $item['#translate'] == TRUE) {
-        $result[$index] = $item;
+      foreach ($this->tmgmt_data->flatten($translatable) as $index => $item) {
+        if (isset($item['#translate']) && $item['#translate'] == TRUE) {
+          list ($data_entity_id, $data_langcode, $data_field_id, $data_other) = explode('][', $index, 4);
+          $result[$data_entity_id][$data_field_id][$data_langcode] = [
+            'item' => $item,
+            'data_index' => $index,
+            'data_other' => $data_other,
+          ];
+        }
       }
     }
-    // create empty spreadsheet
-    $this->spreadsheet = new Spreadsheet();
-    $this->spreadsheet
-      ->getProperties()
-      ->setCreated(\Drupal::time()->getRequestTime());
-    // write spreadsheet data
     $context = [
+      'default_language' => $default_language,
       'languages' => $languages,
       'spreadsheet' => $this->spreadsheet,
       'node' => $node,
     ];
     // hook_dom_node_import_spreadsheet_write_spreadsheet_alter()
     $this->moduleHandler->alter('dom_node_import_spreadsheet_write_spreadsheet', $result, $context);
-    $this->writeXlsx($languages, $result, $node);
+    // create empty spreadsheet and write data
+    $this->spreadsheet = new Spreadsheet();
+    $this->spreadsheet
+      ->getProperties()
+      ->setCreated(\Drupal::time()->getRequestTime());
+    $this->writeXlsx($default_language, $languages, $result, $node);
     $filename = $this->file_system->tempnam('temporary://', 'dnis_') . '.xlsx';
     $objWriter = IOFactory::createWriter($this->spreadsheet, 'Xlsx');
     ob_start();
@@ -154,7 +175,8 @@ class DownloadXls extends ControllerBase {
   /**
    * Write data to spreadsheet
    */
-  private function writeXlsx(array $languages, array $data, Node $node) {
+  private function writeXlsx($default_language, array $languages, array $data, Node $node) {
+    unset($languages[$default_language->getId()]);
     // add node ID for first row
     $this->spreadsheet
       ->getActiveSheet()
@@ -180,60 +202,62 @@ class DownloadXls extends ControllerBase {
       ->getActiveSheet()
       ->freezePane('C3');
     $row = 3;
-    foreach ($data as $key => $value) {
-      // entity
-      $coordinate = 'A' . $row;
-      $field_path = explode('][', $key);
-      $this->spreadsheet
-        ->getActiveSheet()
-        ->setCellValue($coordinate, $field_path[0]);
-      // key
-      $coordinate = 'B' . $row;
-      $this->spreadsheet
-        ->getActiveSheet()
-        ->setCellValue($coordinate, substr($key, strlen($field_path[0]) + 2));
-      // parent label
-      $coordinate = 'C' . $row;
-      $parent_label = isset($value['#parent_label'][0]) ? $value['#parent_label'][0] : '';
-      $this->spreadsheet
-        ->getActiveSheet()
-        ->calculateColumnWidths()
-        ->setCellValue($coordinate, $parent_label);
-      // label
-      $coordinate = 'D' . $row;
-      $label = isset($value['#label']) ? $value['#label'] : '';
-      $this->spreadsheet
-        ->getActiveSheet()
-        ->calculateColumnWidths()
-        ->setCellValue($coordinate, $label);
-      // text
-      $coordinate = 'E' . $row;
-      $text = isset($value['#text']) ? $value['#text'] : '';
-      $this->spreadsheet
-        ->getActiveSheet()
-        ->calculateColumnWidths()
-        ->setCellValue($coordinate, $text);
-      // languages
-      $column_index = 'E';
-      while (isset($header[++$column_index])) {
-        $coordinate = $column_index . $row;
-        $text = isset($value['#text']) ? $value['#text'] : '';
+    // data processing
+    foreach ($data as $data_entity_id => $temporary_data) {
+      foreach ($temporary_data as $field_name => $field_data) {
+        // entity
+        $coordinate = 'A' . $row;
+        $this->spreadsheet
+          ->getActiveSheet()
+          ->setCellValue($coordinate, $data_entity_id);
+        // key
+        $coordinate = 'B' . $row;
+        $this->spreadsheet
+          ->getActiveSheet()
+          ->setCellValue($coordinate, $field_name);
+        // parent label
+        $coordinate = 'C' . $row;
+        $parent_label = isset($field_data[$default_language->getId()]['item']['#parent_label'][0]) ? $field_data[$default_language->getId()]['item']['#parent_label'][0] : '';
         $this->spreadsheet
           ->getActiveSheet()
           ->calculateColumnWidths()
-          ->setCellValue($coordinate, $text)
-          ->getStyle($coordinate)
-          ->getProtection()
-          ->setLocked(Protection::PROTECTION_UNPROTECTED);
-      }
-      // auto size cells
-      foreach (['C', 'D', 'E'] as $index) {
+          ->setCellValue($coordinate, $parent_label);
+        // label
+        $coordinate = 'D' . $row;
+        $label = isset($field_data[$default_language->getId()]['item']['#label']) ? $field_data[$default_language->getId()]['item']['#label'] : '';
         $this->spreadsheet
           ->getActiveSheet()
-          ->getColumnDimension($index)
-          ->setAutoSize(true);
+          ->calculateColumnWidths()
+          ->setCellValue($coordinate, $label);
+        // original text
+        $coordinate = 'E' . $row;
+        $text = isset($field_data[$default_language->getId()]['item']['#text']) ? $field_data[$default_language->getId()]['item']['#text'] : '';
+        $this->spreadsheet
+          ->getActiveSheet()
+          ->calculateColumnWidths()
+          ->setCellValue($coordinate, $text);
+        // languages
+        $column_index = 'E';
+        foreach ($field_data as $data_langcode => $data_value) {
+          $coordinate = $column_index++ . $row;
+          $text = isset($data_value['item']['#text']) ? $data_value['item']['#text'] : '';
+          $this->spreadsheet
+            ->getActiveSheet()
+            ->calculateColumnWidths()
+            ->setCellValue($coordinate, $text)
+            ->getStyle($coordinate)
+            ->getProtection()
+            ->setLocked(Protection::PROTECTION_UNPROTECTED);
+        }
+        $row++;
       }
-      $row++;
+    }
+    // auto size cells
+    foreach (['C', 'D', 'E'] as $index) {
+      $this->spreadsheet
+        ->getActiveSheet()
+        ->getColumnDimension($index)
+        ->setAutoSize(true);
     }
     // hide metadata row
     $this->spreadsheet

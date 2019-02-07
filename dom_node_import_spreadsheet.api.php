@@ -48,6 +48,7 @@ function hook_dom_node_import_spreadsheet_import_alter(&$data, $context) {
  *
  * @param array $result
  * @param array $context array keys:
+ *   - default_language: default language object
  *   - languages: languages object array
  *   - spreadsheet: exported spreadsheet
  *   - node: exported node

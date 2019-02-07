@@ -13,11 +13,16 @@
  * Implements hook_dom_node_import_spreadsheet_write_spreadsheet_alter().
  */
 function dom_node_import_spreadsheet_dom_node_import_spreadsheet_write_spreadsheet_alter(&$result, $context) {
-  foreach ($result as $index => $value) {
-    $entity_path = explode('][', $index);
-    $key = substr($index, strlen($entity_path[0]) + 2);
-    if (strpos($key, '[entity]') !== FALSE || (isset($value['#text']) && is_numeric($value['#text']))) {
-      unset($result[$index]);
+  foreach ($result as $data_entity_id => &$temporary_data) {
+    foreach ($temporary_data as $field_name => &$field_data) {
+      foreach ($field_data as $data_langcode => &$data_value) {
+        if (strpos($data_value['data_other'], '[entity]') !== FALSE || (isset($data_value['item']['#text']) && is_numeric($data_value['item']['#text']))) {
+          unset($field_data[$data_langcode]);
+        }
+      }
+      if (empty($field_data)) {
+        unset($temporary_data[$field_name]);
+      }
     }
   }
 }

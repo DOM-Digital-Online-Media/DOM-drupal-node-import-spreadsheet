@@ -211,6 +211,7 @@ class TranslateForm extends FormBase {
         $controller = $this->entity_manager->getStorage($entity_type);
         /** @var \Drupal\Core\Entity\ContentEntityInterface $entity */
         $entity = $controller->load($entity_id);
+        $field_definitions = $entity->getFieldDefinitions();
         $this->module_handler->alter('dom_node_import_spreadsheet_save_translate', $all_data, $context);
         foreach ($all_data as $langcode => $data) {
           if (!isset($data) || empty($data)) {
@@ -223,7 +224,22 @@ class TranslateForm extends FormBase {
           elseif ($form_state->getValue('overwrite')) {
             $translated_entity = $entity->getTranslation($langcode);
             foreach ($data as $field_name => $field_data) {
-              $translated_entity->set($field_name, $field_data);
+              $definition = $field_definitions[$field_name];
+
+              // Put label value of entity as key for entity reference field.
+              if ($definition->getType() === 'entity_reference') {
+                $referenced_entities = $entity->get($field_name)->referencedEntities();
+                // @todo: Make it work with multiple fields.
+                $referenced_entity = array_shift($referenced_entities);
+                $entity_info = $this->entity_manager->getDefinition($referenced_entity->getEntityTypeId());
+                $label = $entity_info->getKey('label');
+                $translated_referenced_entity = $referenced_entity->getTranslation($langcode);
+                $translated_referenced_entity->set($label, $field_data);
+                $translated_referenced_entity->save();
+              }
+              else {
+                $translated_entity->set($field_name, $field_data);
+              }
             }
           }
           if (isset($translated_entity)) {

@@ -63,5 +63,18 @@ function hook_dom_node_import_spreadsheet_write_spreadsheet_alter(&$result, $con
 }
 
 /**
+ * Return fields that should be included in spreadsheet export, if no hook
+ * provided than all fields will be used.
+ *
+ * @param \Drupal\node\NodeInterface $node
+ *
+ * @return array
+ *   A list with fields.
+ */
+function hook_dom_drupal_node_import_spreadsheet_required_fields($node) {
+  return [];
+}
+
+/**
  * @} End of "addtogroup hooks".
  */

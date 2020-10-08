@@ -152,6 +152,11 @@ class DownloadXls extends ControllerBase {
       foreach ($this->tmgmt_data->flatten($translatable) as $index => $item) {
         list ($data_entity_id, $data_langcode, $data_field_id, $data_other) = explode('][', $index, 4);
         if ((empty($required_fields) || in_array($data_field_id, $required_fields)) && strpos($data_other, 'format') === FALSE) {
+
+          // Split link field, to url and title fields.
+          if ($data_other === '0][uri') {
+            $data_field_id .= '_uri';
+          }
           $result[$data_entity_id][$data_field_id][$data_langcode] = [
             'item' => $item,
             'data_index' => $index,

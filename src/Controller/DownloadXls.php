@@ -177,7 +177,7 @@ class DownloadXls extends ControllerBase {
     ob_start();
     $objWriter->save('php://output');
     $output = ob_get_clean();
-    $file = file_save_data($output, $filename, FILE_EXISTS_RENAME);
+    $file = file_save_data($output, $filename);
     $file->setTemporary();
     $file->save();
     // Send file to browser.

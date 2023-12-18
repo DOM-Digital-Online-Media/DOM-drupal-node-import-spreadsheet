@@ -2,16 +2,16 @@
 
 namespace Drupal\dom_node_import_spreadsheet\Controller;
 
-use Drupal\Component\Utility\Unicode;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Entity\ContentEntityInterface;
-use Drupal\Core\Entity\EntityManagerInterface;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\Language\LanguageInterface;
 use Drupal\Core\Render\Element;
 use Drupal\field\Entity\FieldConfig;
+use Drupal\file\FileRepositoryInterface;
 use Drupal\node\Entity\Node;
 use Drupal\tmgmt\Data;
 use Drupal\tmgmt\SourceManager;
@@ -20,8 +20,9 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Protection;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Symfony\Component\HttpFoundation\File\MimeType\MimeTypeGuesserInterface;
+use Symfony\Component\Mime\MimeTypeGuesserInterface;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mime\Header\UnstructuredHeader;
 
 /**
  * Returns responses for DOM node import from spreadsheet routes.
@@ -29,29 +30,36 @@ use Symfony\Component\HttpFoundation\Response;
 class DownloadXls extends ControllerBase {
 
   /**
-   * @var \Drupal\Core\File\FileSystemInterface $file_system
+   * @var \Drupal\Core\File\FileSystemInterface
    */
   protected $file_system;
 
   /**
-   * @var \Drupal\tmgmt\SourceManager $sourceManager
+   * @var \Drupal\tmgmt\SourceManager
    */
   protected $sourceManager;
 
   /**
-   * @var \Drupal\tmgmt\Data $tmgmt_data
+   * @var \Drupal\tmgmt\Data
    */
   protected $tmgmt_data;
 
   /**
-   * @var \PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet
+   * @var \PhpOffice\PhpSpreadsheet\Spreadsheet
    */
   protected $spreadsheet;
 
   /**
-   * @var \Symfony\Component\HttpFoundation\File\MimeType\MimeTypeGuesserInterface $mime_type_guesser
+   * @var \Symfony\Component\Mime\MimeTypeGuesserInterface
    */
   protected $mime_type_guesser;
+
+  /**
+   * File repository service.
+   *
+   * @var \Drupal\file\FileRepositoryInterface
+   */
+  protected $fileRepository;
 
   /**
    * {@inheritdoc}
@@ -61,13 +69,15 @@ class DownloadXls extends ControllerBase {
                               Data $tmgmt_data,
                               MimeTypeGuesserInterface $mime_type_guesser,
                               ModuleHandlerInterface $module_handler,
-                              EntityManagerInterface $entity_manager) {
+                              EntityTypeManagerInterface $entity_manager,
+                              FileRepositoryInterface $file_repository) {
     $this->file_system = $file_system;
     $this->sourceManager = $sourceManager;
     $this->tmgmt_data = $tmgmt_data;
     $this->mime_type_guesser = $mime_type_guesser;
     $this->moduleHandler = $module_handler;
     $this->entityManager = $entity_manager;
+    $this->fileRepository = $file_repository;
   }
 
   /**
@@ -80,7 +90,8 @@ class DownloadXls extends ControllerBase {
       $container->get('tmgmt.data'),
       $container->get('file.mime_type.guesser'),
       $container->get('module_handler'),
-      $container->get('entity.manager')
+      $container->get('entity_type.manager'),
+      $container->get('file.repository')
     );
   }
 
@@ -150,7 +161,7 @@ class DownloadXls extends ControllerBase {
       }
 
       foreach ($this->tmgmt_data->flatten($translatable) as $index => $item) {
-        list ($data_entity_id, $data_langcode, $data_field_id, $data_other) = explode('][', $index, 4);
+        [$data_entity_id, $data_langcode, $data_field_id, $data_other] = explode('][', $index, 4);
         if ((empty($required_fields) || in_array($data_field_id, $required_fields)) && strpos($data_other, 'format') === FALSE) {
 
           // Split link field, to url and title fields.
@@ -177,16 +188,16 @@ class DownloadXls extends ControllerBase {
     ob_start();
     $objWriter->save('php://output');
     $output = ob_get_clean();
-    $file = file_save_data($output, $filename);
+    $file = $this->fileRepository->writeData($output, $filename);
     $file->setTemporary();
     $file->save();
     // Send file to browser.
     $filename = sprintf('dom_node_import_spreadsheet__%d.xlsx', $node->id());
     $mime = $this->mime_type_guesser->guess($file->getFileUri());
     $headers = [
-      'Content-Type' => $mime . '; name="' . Unicode::mimeHeaderEncode(basename($file->getFileUri())) . '"',
+      'Content-Type' => $mime . '; name="' . (new UnstructuredHeader('name', basename($file->getFileUri())))->getBodyAsString() . '"',
       'Content-Length' => filesize($file->getFileUri()),
-      'Content-Disposition' => 'attachment; filename="' . Unicode::mimeHeaderEncode($filename) . '"',
+      'Content-Disposition' => 'attachment; filename="' . (new UnstructuredHeader('filename', $filename))->getBodyAsString() . '"',
       'Cache-Control' => 'private',
     ];
     return new BinaryFileResponse($file->getFileUri(), Response::HTTP_OK, $headers, FALSE);

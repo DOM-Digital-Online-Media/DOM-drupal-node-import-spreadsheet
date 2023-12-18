@@ -3,6 +3,6 @@ type: module
 description: DOM node import from spreadsheet
 package: DOM
 core: 8.x
-core_version_requirement: ^8 || ^9
+core_version_requirement: ^8 || ^9 || ^10
 dependencies:
   - tmgmt_content
